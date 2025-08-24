@@ -32,6 +32,18 @@ const (
 	featureRequest
 )
 
+func (it issueType) Display() string {
+	switch it {
+	case neutralIssue:
+		return "issue"
+	case bugReport:
+		return "bug report"
+	case featureRequest:
+		return "feature request"
+	}
+	return ""
+}
+
 // interactionContext represents a Discord message.
 type interactionContext struct {
 	authorID         string
@@ -157,7 +169,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Create issue [1 / 2]",
+					Content: fmt.Sprintf("Create %s [1 / 2]", c.issueType.Display()),
 					Flags:   discordgo.MessageFlagsEphemeral,
 					Components: []discordgo.MessageComponent{
 						discordgo.ActionsRow{
@@ -206,7 +218,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				Type: discordgo.InteractionResponseModal,
 				Data: &discordgo.InteractionResponseData{
 					CustomID: makeCustomID(idCreateIssueTitle, cid),
-					Title:    "Create issue [2 / 2]",
+					Title:    fmt.Sprintf("Create %s [2 / 2]", c.issueType.Display()),
 					Components: []discordgo.MessageComponent{
 						discordgo.ActionsRow{
 							Components: []discordgo.MessageComponent{
@@ -274,7 +286,16 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
-			return err
+			if err != nil {
+				return err
+			}
+			slog.Info(
+				"Issue created",
+				"repo", fmt.Sprintf("%s/%s", g.Owner, g.Repo),
+				"id", issue.ID,
+				"title", issue.Title,
+			)
+			return nil
 		}
 		return fmt.Errorf("unhandled modal submit: %s", customID)
 	}
