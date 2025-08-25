@@ -255,7 +255,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			c := x2.(interactionContext)
 			messageURL := fmt.Sprintf("https://discord.com/channels/%s/%s/%s", c.guildID, c.channelID, c.messageID)
 			body := fmt.Sprintf(
-				"%s\n\n*Created from Discord message by %s* [[Link](%s)]",
+				"> %s\n\n*Originally posted by **%s** on [Discord](%s)*",
 				c.messageContent,
 				c.authorName,
 				messageURL,
@@ -292,8 +292,8 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			slog.Info(
 				"Issue created",
 				"repo", fmt.Sprintf("%s/%s", g.Owner, g.Repo),
-				"id", issue.ID,
-				"title", issue.Title,
+				"id", *issue.Number,
+				"title", *issue.Title,
 			)
 			return nil
 		}

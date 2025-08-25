@@ -91,4 +91,4 @@ sudo supervisorctl restart supportbot
 
 ## Credits
 
-[Contact-us icons created by redempticon - Flaticon]("https://www.flaticon.com/free-icons/contact-us")
+[Contact-us icons created by redempticon - Flaticon](https://www.flaticon.com/free-icons/contact-us)
