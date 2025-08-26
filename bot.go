@@ -90,15 +90,17 @@ type Bot struct {
 	appID    string
 	config   config
 	ds       *discordgo.Session
+	st       *Storage
 	messages sync.Map
 	counter  atomic.Int64
 }
 
-func NewBot(ds *discordgo.Session, config config) *Bot {
+func NewBot(st *Storage, ds *discordgo.Session, config config) *Bot {
 	b := &Bot{
 		appID:  config.Discord.AppID,
 		config: config,
 		ds:     ds,
+		st:     st,
 	}
 	ds.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
 		slog.Info("Bot is up!")

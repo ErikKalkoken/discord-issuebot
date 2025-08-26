@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -21,8 +23,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	// fmt.Printf("%+v", config)
-	// return
+	db, err := bolt.Open("data.db", 0600, nil)
+	if err != nil {
+		slog.Error("Failed to open database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	st := NewStorage(db)
+	if err := st.Init(); err != nil {
+		slog.Error("Failed to init database", "error", err)
+		os.Exit(1)
+	}
 
 	// Start bot
 	ds, err := discordgo.New("Bot " + config.Discord.BotToken)
@@ -32,7 +44,7 @@ func main() {
 	}
 	ds.Identify.Intents = discordgo.IntentMessageContent
 	ds.UserAgent = "SupportBot (https://github.com/ErikKalkoken/discord-supportbot, 0.0.0)"
-	b := NewBot(ds, config)
+	b := NewBot(st, ds, config)
 	if err := ds.Open(); err != nil {
 		slog.Error("Cannot open the Discord session", "error", err)
 		os.Exit(1)
