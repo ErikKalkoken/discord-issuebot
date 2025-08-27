@@ -51,16 +51,6 @@ tar -xvzf supportbot-X.Y.Z-linux-amd64.tar.gz
 > [!TIP]
 > Please make sure update the URL and filename to the latest version.
 
-#### Configuration
-
-Download bot configuration file:
-
-```sh
-wget https://raw.githubusercontent.com/ErikKalkoken/supportbot/main/config/config.yaml
-```
-
-Add you app ID, your bot token and configure Github repos.
-
 #### Supervisor
 
 Download supervisor configuration file:
@@ -75,6 +65,8 @@ Setup and configure:
 chmod +x supportbot
 touch supportbot.log
 ```
+
+Add your Discord app ID and bot token to the supervisor.conf file.
 
 Add supportbot to supervisor:
 

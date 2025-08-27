@@ -4,9 +4,9 @@ go 1.24
 
 require (
 	github.com/bwmarrin/discordgo v0.29.0
-	github.com/goccy/go-yaml v1.18.0
 	github.com/google/go-github/v74 v74.0.0
 	github.com/icrowley/fake v0.0.0-20240710202011-f797eb4a99c0
+	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.10.0
 	go.etcd.io/bbolt v1.4.3
 )

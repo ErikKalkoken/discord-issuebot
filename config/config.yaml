@@ -1,8 +1,0 @@
-discord:
-  appID: 123456789
-  botToken: abcdefg1234567
-
-github:
-  - repo: repo
-    owner: owner
-    token: efghji12345

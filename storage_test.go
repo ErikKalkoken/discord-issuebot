@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
 	"path/filepath"
@@ -23,50 +22,116 @@ func TestStorage(t *testing.T) {
 	if err = st.Init(); err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
 	t.Run("can create new repo", func(t *testing.T) {
-		if err := st.DeleteRepos(); err != nil {
+		if err := st.DeleteAll(); err != nil {
 			t.Fatal(err)
 		}
-		r1, err := st.UpdateOrCreateRepo(ctx, UpdateOrCreateRepoParams{
+		r1, created, err := st.UpdateOrCreateRepo(UpdateOrCreateRepoParams{
 			Owner:  "owner",
-			Name:   "repo",
+			Repo:   "repo",
 			UserID: "user",
 			Token:  "token",
 		})
 		if assert.NoError(t, err) {
+			assert.True(t, created)
 			assert.Equal(t, "owner", r1.Owner)
-			assert.Equal(t, "repo", r1.Name)
+			assert.Equal(t, "repo", r1.Repo)
 			assert.Equal(t, "user", r1.UserID)
 			assert.Equal(t, "token", r1.Token)
-			r2, err := st.GetRepo(ctx, "user", "owner", "repo")
+			r2, err := st.GetRepo(r1.ID)
 			if assert.NoError(t, err) {
 				assert.Equal(t, r1, r2)
 			}
 		}
 	})
-	t.Run("should return not found error", func(t *testing.T) {
-		if err := st.DeleteRepos(); err != nil {
+	t.Run("can update existing repo", func(t *testing.T) {
+		if err := st.DeleteAll(); err != nil {
 			t.Fatal(err)
 		}
-		_, err := st.GetRepo(ctx, "user", "owner", "repo")
+		r2 := createRepo(t, st)
+		r1, created, err := st.UpdateOrCreateRepo(UpdateOrCreateRepoParams{
+			Owner:  r2.Owner,
+			Repo:   r2.Repo,
+			UserID: r2.UserID,
+			Token:  "token",
+		})
+		if assert.NoError(t, err) {
+			assert.False(t, created)
+			assert.Equal(t, "token", r1.Token)
+		}
+	})
+	t.Run("can get a repo", func(t *testing.T) {
+		if err := st.DeleteAll(); err != nil {
+			t.Fatal(err)
+		}
+		r1 := createRepo(t, st)
+		r2, err := st.GetRepo(r1.ID)
+		if assert.NoError(t, err) {
+			assert.Equal(t, r1, r2)
+		}
+	})
+	t.Run("should return when not found error", func(t *testing.T) {
+		if err := st.DeleteAll(); err != nil {
+			t.Fatal(err)
+		}
+		_, err := st.GetRepo(42)
 		assert.ErrorIs(t, err, ErrNotFound)
 	})
-	t.Run("can list repos for user", func(t *testing.T) {
-		if err := st.DeleteRepos(); err != nil {
+	t.Run("can list repo IDs", func(t *testing.T) {
+		if err := st.DeleteAll(); err != nil {
+			t.Fatal(err)
+		}
+		r1 := createRepo(t, st)
+		r2 := createRepo(t, st)
+		if assert.NoError(t, err) {
+			got, err := st.ListRepoIDs()
+			if assert.NoError(t, err) {
+				want := []int{r2.ID, r1.ID}
+				assert.ElementsMatch(t, want, got)
+			}
+		}
+	})
+	t.Run("can return ordered list of repos for user", func(t *testing.T) {
+		if err := st.DeleteAll(); err != nil {
 			t.Fatal(err)
 		}
 		user1 := "user1"
-		r1 := createRepo(t, st, UpdateOrCreateRepoParams{UserID: user1})
-		r2 := createRepo(t, st, UpdateOrCreateRepoParams{UserID: user1})
+		r1 := createRepo(t, st, UpdateOrCreateRepoParams{
+			UserID: user1,
+			Owner:  "alpha",
+			Repo:   "two",
+		})
+		r2 := createRepo(t, st, UpdateOrCreateRepoParams{
+			UserID: user1,
+			Owner:  "alpha",
+			Repo:   "first",
+		})
 		createRepo(t, st)
 		if assert.NoError(t, err) {
-			xx, err := st.ListReposForUser(ctx, user1)
+			xx, err := st.ListReposForUser(user1)
 			if assert.NoError(t, err) {
-				want := []string{r1.Token, r2.Token}
-				var got []string
+				want := []int{r2.ID, r1.ID}
+				var got []int
 				for _, x := range xx {
-					got = append(got, x.Token)
+					got = append(got, x.ID)
+				}
+				assert.Equal(t, want, got)
+			}
+		}
+	})
+	t.Run("can delete a repo", func(t *testing.T) {
+		if err := st.DeleteAll(); err != nil {
+			t.Fatal(err)
+		}
+		r1 := createRepo(t, st)
+		r2 := createRepo(t, st)
+		if assert.NoError(t, err) {
+			err := st.DeleteRepo(r2.ID)
+			if assert.NoError(t, err) {
+				want := []int{r1.ID}
+				got, err := st.ListRepoIDs()
+				if err != nil {
+					t.Fatal(err)
 				}
 				assert.ElementsMatch(t, want, got)
 			}
@@ -85,13 +150,13 @@ func createRepo(t *testing.T, st *Storage, args ...UpdateOrCreateRepoParams) *Re
 	if arg.Owner == "" {
 		arg.Owner = arg.UserID
 	}
-	if arg.Name == "" {
-		arg.Name = fmt.Sprintf("%s%d", fake.Color(), rand.IntN(10_000))
+	if arg.Repo == "" {
+		arg.Repo = fmt.Sprintf("%s%d", fake.Color(), rand.IntN(10_000))
 	}
 	if arg.Token == "" {
 		arg.Token = fake.SimplePassword()
 	}
-	r, err := st.UpdateOrCreateRepo(context.Background(), arg)
+	r, _, err := st.UpdateOrCreateRepo(arg)
 	if err != nil {
 		t.Fatal(err)
 		return nil
