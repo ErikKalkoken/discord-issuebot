@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"math"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -121,10 +123,10 @@ var commands = []discordgo.ApplicationCommand{
 
 type Bot struct {
 	appID    string
-	ds       *discordgo.Session
-	st       *Storage
-	sessions sync.Map
 	counter  atomic.Int64
+	ds       *discordgo.Session
+	sessions sync.Map
+	st       *Storage
 }
 
 func NewBot(st *Storage, ds *discordgo.Session, appID string) *Bot {
@@ -210,8 +212,8 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				messageTimestamp: message.Timestamp,
 				issueType:        it,
 			}
-			uid := b.makeUniqueID()
-			b.sessions.Store(uid, s)
+			sessionID := b.newSessionID()
+			b.sessions.Store(sessionID, s)
 			repos, err := b.st.ListReposForUser(userID)
 			if err != nil {
 				return err
@@ -232,7 +234,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 						discordgo.ActionsRow{
 							Components: []discordgo.MessageComponent{
 								discordgo.SelectMenu{
-									CustomID:    idIssueCreateRepo + uid,
+									CustomID:    idIssueCreateRepo + sessionID,
 									Placeholder: "Choose repo",
 									Options:     options,
 								},
@@ -381,8 +383,8 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		data := ic.MessageComponentData()
 		customID := data.CustomID
 
-		if sid, found := strings.CutPrefix(customID, idIssueCreateRepo); found {
-			x2, ok := b.sessions.Load(sid)
+		if sessionID, found := strings.CutPrefix(customID, idIssueCreateRepo); found {
+			x2, ok := b.sessions.Load(sessionID)
 			if !ok {
 				return fmt.Errorf("failed to load context")
 			}
@@ -392,11 +394,11 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				return err
 			}
 			s.repoID = idx
-			b.sessions.Store(sid, s)
+			b.sessions.Store(sessionID, s)
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseModal,
 				Data: &discordgo.InteractionResponseData{
-					CustomID: idIssueCreateTitle + sid,
+					CustomID: idIssueCreateTitle + sessionID,
 					Title:    fmt.Sprintf("Create %s [2 / 2]", s.issueType.Display()),
 					Components: []discordgo.MessageComponent{
 						discordgo.ActionsRow{
@@ -447,13 +449,32 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			if err != nil {
 				return err
 			}
+			var s string
+			o, resp, err := githubGetRepoInfo(context.Background(), githubGetRepoInfoParams{
+				owner: r.Owner,
+				repo:  r.Repo,
+				token: r.Token,
+			})
+			if err != nil {
+				slog.Warn("Failed to get info for github repo", "error", err)
+				var m string
+				switch resp.StatusCode {
+				case http.StatusUnauthorized:
+					m = "Invalid token"
+				case http.StatusNotFound:
+					m = "Repository not found"
+				}
+				s = "Test failed: " + m
+			} else {
+				s = "Test succeeded"
+			}
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseUpdateMessage,
 				Data: &discordgo.InteractionResponseData{
 					Flags: discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
 					Components: []discordgo.MessageComponent{
 						discordgo.TextDisplay{
-							Content: "Repo tested: " + r.Name(),
+							Content: fmt.Sprintf("%s: %s", *o.FullName, s),
 						},
 					},
 				},
@@ -466,12 +487,12 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		data := ic.ModalSubmitData()
 		customID := data.CustomID
 
-		if uid, found := strings.CutPrefix(customID, idIssueCreateTitle); found {
-			x2, ok := b.sessions.Load(uid)
+		if sessionID, found := strings.CutPrefix(customID, idIssueCreateTitle); found {
+			x, ok := b.sessions.Load(sessionID)
 			if !ok {
 				return fmt.Errorf("failed to load session")
 			}
-			s := x2.(createIssueData)
+			s := x.(createIssueData)
 			messageURL := fmt.Sprintf("https://discord.com/channels/%s/%s/%s", s.guildID, s.channelID, s.messageID)
 			body := fmt.Sprintf(
 				"> %s\n\n*Originally posted by **%s** on [Discord](%s)*",
@@ -490,7 +511,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			case featureRequest:
 				labels = append(labels, "enhancement")
 			}
-			issue, err := createGithubIssue(createGithubIssueParams{
+			issue, err := gitHubCreateIssue(context.Background(), gitHubCreateIssueParams{
 				body:   body,
 				labels: labels,
 				owner:  r.Owner,
@@ -511,20 +532,49 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			if err != nil {
 				return err
 			}
-			slog.Info(
-				"Issue created",
-				"repo", fmt.Sprintf("%s/%s", r.Owner, r.Repo),
-				"id", *issue.Number,
-				"title", *issue.Title,
-			)
+			b.sessions.Delete(sessionID)
 			return nil
 
 		} else if userID, found := strings.CutPrefix(customID, idRepoAdd); found {
+			err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Flags: discordgo.MessageFlagsEphemeral,
+				},
+			})
+			if err != nil {
+				return err
+			}
+			owner := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+			repo := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+			token := data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+			_, resp, err := githubGetRepoInfo(context.Background(), githubGetRepoInfoParams{
+				owner: owner,
+				repo:  repo,
+				token: token,
+			})
+			if err != nil {
+				slog.Warn("Failed to get info for github repo", "error", err)
+				var m string
+				switch resp.StatusCode {
+				case http.StatusUnauthorized:
+					m = "Invalid token"
+				case http.StatusNotFound:
+					m = "Repository not found"
+				}
+				_, err2 := b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
+					Content: "ERROR: Failed to add repo: " + m,
+				})
+				if err2 != nil {
+					return err2
+				}
+				return nil
+			}
 			r, created, err := b.st.UpdateOrCreateRepo(UpdateOrCreateRepoParams{
-				Owner:  data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value,
-				Repo:   data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value,
-				Token:  data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value,
 				UserID: userID,
+				Owner:  owner,
+				Repo:   repo,
+				Token:  token,
 			})
 			if err != nil {
 				return err
@@ -535,12 +585,8 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			} else {
 				action = "updated"
 			}
-			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf("Repo %s: %s", action, r.Name()),
-					Flags:   discordgo.MessageFlagsEphemeral,
-				},
+			_, err = b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
+				Content: fmt.Sprintf("Repo %s: %s", action, r.Name()),
 			})
 			if err != nil {
 				return err
@@ -553,6 +599,6 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 	return fmt.Errorf("unexpected interaction type %d", ic.Type)
 }
 
-func (b *Bot) makeUniqueID() string {
+func (b *Bot) newSessionID() string {
 	return strconv.Itoa(int(b.counter.Add(1)))
 }

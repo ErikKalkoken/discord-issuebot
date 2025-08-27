@@ -44,6 +44,9 @@ func (st *Storage) Init() error {
 		}
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("Init: %w", err)
+	}
 	return err
 }
 
@@ -70,6 +73,9 @@ func (st *Storage) DeleteAll() error {
 		})
 		return err
 	})
+	if err != nil {
+		return fmt.Errorf("DeleteAll: %w", err)
+	}
 	return err
 }
 
@@ -96,7 +102,7 @@ func (st *Storage) DeleteRepo(id int) error {
 		return err
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("DeleteRepo: %d: %w", id, err)
 	}
 	slog.Info("Repo deleted", "id", id)
 	return nil
@@ -113,6 +119,9 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 		err := json.Unmarshal(data, &r)
 		return err
 	})
+	if err != nil {
+		return nil, fmt.Errorf("GetRepo: %d: %w", id, err)
+	}
 	return r, err
 }
 
@@ -134,6 +143,55 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 // 	})
 // 	return r, err
 // }
+
+func (st *Storage) ListRepoIDs() ([]int, error) {
+	ids := make([]int, 0)
+	err := st.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketRepos))
+		return b.ForEach(func(_, data []byte) error {
+			r := new(Repo)
+			if err := json.Unmarshal(data, &r); err != nil {
+				return err
+			}
+			ids = append(ids, r.ID)
+			return nil
+		})
+
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ListRepoIDs: %w", err)
+	}
+	return ids, err
+}
+
+// ListReposForUser returns the repos of a user ordered by repo name.
+func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
+	repos := make([]*Repo, 0)
+	err := st.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketRepos))
+		err := b.ForEach(func(_, data []byte) error {
+			r := new(Repo)
+			if err := json.Unmarshal(data, &r); err != nil {
+				return err
+			}
+			if r.UserID != userID {
+				return nil
+			}
+			repos = append(repos, r)
+			return nil
+		})
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ListReposForUser: %s: %w", userID, err)
+	}
+	if len(repos) > 0 {
+		slices.SortFunc(repos, func(a, b *Repo) int {
+			return strings.Compare(a.Name(), b.Name())
+		})
+	}
+	return repos, nil
+}
 
 type UpdateOrCreateRepoParams struct {
 	Repo   string
@@ -173,7 +231,7 @@ func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool
 		return err
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, fmt.Errorf("UpdateOrCreateRepo: %+v: %w", arg, err)
 	}
 	slog.Info("Repo updated/created", "id", r.ID, "created", created)
 	return &r, created, nil
@@ -184,52 +242,6 @@ func itob(v int) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(v))
 	return b
-}
-
-func (st *Storage) ListRepoIDs() ([]int, error) {
-	ids := make([]int, 0)
-	err := st.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketRepos))
-		return b.ForEach(func(_, data []byte) error {
-			r := new(Repo)
-			if err := json.Unmarshal(data, &r); err != nil {
-				return err
-			}
-			ids = append(ids, r.ID)
-			return nil
-		})
-
-	})
-	return ids, err
-}
-
-// ListReposForUser returns the repos of a user ordered by repo name.
-func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
-	repos := make([]*Repo, 0)
-	err := st.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketRepos))
-		err := b.ForEach(func(_, data []byte) error {
-			r := new(Repo)
-			if err := json.Unmarshal(data, &r); err != nil {
-				return err
-			}
-			if r.UserID != userID {
-				return nil
-			}
-			repos = append(repos, r)
-			return nil
-		})
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(repos) > 0 {
-		slices.SortFunc(repos, func(a, b *Repo) int {
-			return strings.Compare(a.Name(), b.Name())
-		})
-	}
-	return repos, nil
 }
 
 func makeUniqueID(userID, owner, repo string) []byte {

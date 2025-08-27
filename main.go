@@ -20,7 +20,7 @@ import (
 
 // TODOs
 // [ ] Enter repos via URL
-// [ ] Test repos token during creation process
+// [x] Test repos token during creation process
 // [ ] Add version
 
 func main() {
