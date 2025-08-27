@@ -80,6 +80,12 @@ func (st *Storage) DeleteAll() error {
 }
 
 func (st *Storage) DeleteRepo(id int) error {
+	wrapErr := func(err error) error {
+		return fmt.Errorf("DeleteRepo: %d: %w", id, err)
+	}
+	if id == 0 {
+		return wrapErr(ErrInvalidArguments)
+	}
 	err := st.db.Update(func(tx *bolt.Tx) error {
 		// delete repo
 		repos := tx.Bucket([]byte(bucketRepos))
@@ -102,13 +108,19 @@ func (st *Storage) DeleteRepo(id int) error {
 		return err
 	})
 	if err != nil {
-		return fmt.Errorf("DeleteRepo: %d: %w", id, err)
+		return wrapErr(err)
 	}
 	slog.Info("Repo deleted", "id", id)
 	return nil
 }
 
 func (st *Storage) GetRepo(id int) (*Repo, error) {
+	wrapErr := func(err error) error {
+		return fmt.Errorf("GetRepo: %d: %w", id, err)
+	}
+	if id == 0 {
+		return nil, wrapErr(ErrInvalidArguments)
+	}
 	r := new(Repo)
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
@@ -120,7 +132,7 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 		return err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("GetRepo: %d: %w", id, err)
+		return nil, wrapErr(err)
 	}
 	return r, err
 }
@@ -166,6 +178,12 @@ func (st *Storage) ListRepoIDs() ([]int, error) {
 
 // ListReposForUser returns the repos of a user ordered by repo name.
 func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
+	wrapErr := func(err error) error {
+		return fmt.Errorf("ListReposForUser: %s: %w", userID, err)
+	}
+	if userID == "" {
+		return nil, wrapErr(ErrInvalidArguments)
+	}
 	repos := make([]*Repo, 0)
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
@@ -183,7 +201,7 @@ func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
 		return err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("ListReposForUser: %s: %w", userID, err)
+		return nil, wrapErr(err)
 	}
 	if len(repos) > 0 {
 		slices.SortFunc(repos, func(a, b *Repo) int {
@@ -201,6 +219,12 @@ type UpdateOrCreateRepoParams struct {
 }
 
 func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool, error) {
+	wrapErr := func(err error) error {
+		return fmt.Errorf("UpdateOrCreateRepo: %+v: %w", arg, err)
+	}
+	if arg.Repo == "" || arg.Owner == "" || arg.Token == "" || arg.UserID == "" {
+		return nil, false, wrapErr(ErrInvalidArguments)
+	}
 	r := Repo{
 		Repo:   arg.Repo,
 		Owner:  arg.Owner,
@@ -231,7 +255,7 @@ func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool
 		return err
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("UpdateOrCreateRepo: %+v: %w", arg, err)
+		return nil, false, wrapErr(err)
 	}
 	slog.Info("Repo updated/created", "id", r.ID, "created", created)
 	return &r, created, nil

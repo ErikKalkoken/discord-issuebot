@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/google/go-github/v74/github"
 )
-
-var errInvalid = errors.New("invalid")
 
 type gitHubCreateIssueParams struct {
 	owner  string
@@ -22,7 +19,7 @@ type gitHubCreateIssueParams struct {
 
 func gitHubCreateIssue(ctx context.Context, arg gitHubCreateIssueParams) (*github.Issue, error) {
 	if arg.owner == "" || arg.repo == "" || arg.token == "" || arg.title == "" {
-		return nil, fmt.Errorf("%+v: %w", arg, errInvalid)
+		return nil, fmt.Errorf("%+v: %w", arg, ErrInvalidArguments)
 	}
 	client := github.NewClient(nil).WithAuthToken(arg.token)
 	issue, _, err := client.Issues.Create(ctx, arg.owner, arg.repo, &github.IssueRequest{
@@ -45,7 +42,7 @@ type githubGetRepoInfoParams struct {
 
 func githubGetRepoInfo(ctx context.Context, arg githubGetRepoInfoParams) (*github.Repository, *github.Response, error) {
 	if arg.owner == "" || arg.repo == "" || arg.token == "" {
-		return nil, nil, fmt.Errorf("%+v: %w", arg, errInvalid)
+		return nil, nil, fmt.Errorf("%+v: %w", arg, ErrInvalidArguments)
 	}
 	client := github.NewClient(nil).WithAuthToken(arg.token)
 	info, r, err := client.Repositories.Get(ctx, arg.owner, arg.repo)

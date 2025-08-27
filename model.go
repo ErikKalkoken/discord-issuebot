@@ -11,5 +11,9 @@ type Repo struct {
 }
 
 func (r Repo) Name() string {
-	return fmt.Sprintf("%s/%s", r.Owner, r.Repo)
+	return fmt.Sprintf("github.com/%s/%s", r.Owner, r.Repo)
+}
+
+func (r Repo) URL() string {
+	return fmt.Sprintf("https://github.com/%s/%s", r.Owner, r.Repo)
 }

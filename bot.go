@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +16,11 @@ import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+)
+
+var (
+	ErrInvalidURL       = errors.New("invalid repo URL")
+	ErrInvalidArguments = errors.New("invalid arguments")
 )
 
 // Discord command names for interactions
@@ -32,6 +39,8 @@ const (
 	idRepoAdd          = "repoAdd"
 	idRepoDelete       = "repoDelete"
 	idRepoTest         = "repoTest"
+	idIssueCreateURL   = "issueCreateURL"
+	idIssueCreateToken = "issueCreateToken"
 )
 
 type issueType uint
@@ -218,6 +227,9 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			if err != nil {
 				return err
 			}
+			if len(repos) == 0 {
+				return respondWithMessage("Please add a repo")
+			}
 			options := make([]discordgo.SelectMenuOption, 0)
 			for _, r := range repos {
 				options = append(options, discordgo.SelectMenuOption{
@@ -278,7 +290,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				if err != nil {
 					return err
 				}
-				const maxReposPerPage = 10
+				const maxReposPerPage = 20
 				pages := int(math.Ceil(float64(len(repos)) / maxReposPerPage))
 				page := 1
 				for chunk := range slices.Chunk(repos, maxReposPerPage) {
@@ -295,7 +307,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 						me := discordgo.Container{
 							Components: []discordgo.MessageComponent{
 								discordgo.TextDisplay{
-									Content: fmt.Sprintf("%s/%s", r.Owner, r.Repo),
+									Content: fmt.Sprintf("[%s](%s)", r.Name(), r.URL()),
 								},
 								discordgo.ActionsRow{
 									Components: []discordgo.MessageComponent{
@@ -335,36 +347,22 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 							discordgo.ActionsRow{
 								Components: []discordgo.MessageComponent{
 									discordgo.TextInput{
-										CustomID:  "owner",
-										Label:     "Owner",
-										Style:     discordgo.TextInputShort,
-										Required:  true,
-										MaxLength: 100,
-										MinLength: 3,
+										CustomID:    idIssueCreateURL,
+										Label:       "Repository URL",
+										Placeholder: "https://github.com/{OWNER}/{REPO}",
+										Style:       discordgo.TextInputShort,
+										Required:    true,
 									},
 								},
 							},
 							discordgo.ActionsRow{
 								Components: []discordgo.MessageComponent{
 									discordgo.TextInput{
-										CustomID:  "repo",
-										Label:     "Repo",
-										Style:     discordgo.TextInputShort,
-										Required:  true,
-										MaxLength: 100,
-										MinLength: 3,
-									},
-								},
-							},
-							discordgo.ActionsRow{
-								Components: []discordgo.MessageComponent{
-									discordgo.TextInput{
-										CustomID:  "token",
-										Label:     "Token",
-										Style:     discordgo.TextInputShort,
-										Required:  true,
-										MaxLength: 100,
-										MinLength: 3,
+										CustomID:    idIssueCreateToken,
+										Label:       "Token",
+										Placeholder: "Github issues read & write access",
+										Style:       discordgo.TextInputShort,
+										Required:    true,
 									},
 								},
 							},
@@ -404,12 +402,10 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 						discordgo.ActionsRow{
 							Components: []discordgo.MessageComponent{
 								discordgo.TextInput{
-									CustomID:  "title",
-									Label:     "Title",
-									Style:     discordgo.TextInputShort,
-									Required:  true,
-									MaxLength: 100,
-									MinLength: 3,
+									CustomID: "title",
+									Label:    "Title",
+									Style:    discordgo.TextInputShort,
+									Required: true,
 								},
 							},
 						},
@@ -545,9 +541,19 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			if err != nil {
 				return err
 			}
-			owner := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
-			repo := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
-			token := data.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+			rawURL := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+			owner, repo, err := parseRepoURL(rawURL)
+			if err != nil {
+				slog.Warn("Failed to parse URL", "url", rawURL, "error", err)
+				_, err2 := b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
+					Content: "ERROR: Failed to add repo: " + err.Error(),
+				})
+				if err2 != nil {
+					return err2
+				}
+				return nil
+			}
+			token := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
 			_, resp, err := githubGetRepoInfo(context.Background(), githubGetRepoInfoParams{
 				owner: owner,
 				repo:  repo,
@@ -601,4 +607,19 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 
 func (b *Bot) newSessionID() string {
 	return strconv.Itoa(int(b.counter.Add(1)))
+}
+
+func parseRepoURL(s string) (string, string, error) {
+	u, err := url.ParseRequestURI(s)
+	if err != nil {
+		return "", "", err
+	}
+	if u.Host != "github.com" {
+		return "", "", fmt.Errorf("host must be github.com: %w", ErrInvalidURL)
+	}
+	x := strings.Split(u.Path, "/")
+	if len(x) != 3 {
+		return "", "", fmt.Errorf("path must have exactly two parts: %w", ErrInvalidURL)
+	}
+	return x[1], x[2], nil
 }

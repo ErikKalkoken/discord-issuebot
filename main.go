@@ -19,7 +19,7 @@ import (
 )
 
 // TODOs
-// [ ] Enter repos via URL
+// [x] Enter repos via URL
 // [x] Test repos token during creation process
 // [ ] Add version
 
