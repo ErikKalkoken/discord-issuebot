@@ -228,7 +228,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				return err
 			}
 			if len(repos) == 0 {
-				return respondWithMessage("Please add a repo")
+				return respondWithMessage(":exclamation: Please add a repo")
 			}
 			options := make([]discordgo.SelectMenuOption, 0)
 			for _, r := range repos {
@@ -279,7 +279,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					return err
 				}
 				if len(repos) == 0 {
-					return respondWithMessage("No repos yet")
+					return respondWithMessage(":exclamation: No repos yet")
 				}
 				err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 					Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -384,7 +384,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		if sessionID, found := strings.CutPrefix(customID, idIssueCreateRepo); found {
 			x2, ok := b.sessions.Load(sessionID)
 			if !ok {
-				return fmt.Errorf("failed to load context")
+				return fmt.Errorf("failed to load session")
 			}
 			s := x2.(createIssueData)
 			idx, err := strconv.Atoi(data.Values[0])
@@ -429,7 +429,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					Flags: discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
 					Components: []discordgo.MessageComponent{
 						discordgo.TextDisplay{
-							Content: "Repo deleted",
+							Content: ":white_check_mark: Repo deleted",
 						},
 					},
 				},
@@ -446,7 +446,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				return err
 			}
 			var s string
-			o, resp, err := githubGetRepoInfo(context.Background(), githubGetRepoInfoParams{
+			_, resp, err := githubGetRepoInfo(context.Background(), githubGetRepoInfoParams{
 				owner: r.Owner,
 				repo:  r.Repo,
 				token: r.Token,
@@ -460,9 +460,9 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				case http.StatusNotFound:
 					m = "Repository not found"
 				}
-				s = "Test failed: " + m
+				s = fmt.Sprintf(":x: %s: Test failed: %s", r.Name(), m)
 			} else {
-				s = "Test succeeded"
+				s = fmt.Sprintf(":white_check_mark: %s: Test succeeded", r.Name())
 			}
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseUpdateMessage,
@@ -470,7 +470,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					Flags: discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
 					Components: []discordgo.MessageComponent{
 						discordgo.TextDisplay{
-							Content: fmt.Sprintf("%s: %s", *o.FullName, s),
+							Content: s,
 						},
 					},
 				},
@@ -521,7 +521,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseUpdateMessage,
 				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf("Issue created on Github\n%s", *issue.HTMLURL),
+					Content: fmt.Sprintf(":white_check_mark: Issue created on Github\n%s", *issue.HTMLURL),
 					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
@@ -546,7 +546,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			if err != nil {
 				slog.Warn("Failed to parse URL", "url", rawURL, "error", err)
 				_, err2 := b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
-					Content: "ERROR: Failed to add repo: " + err.Error(),
+					Content: ":x: Failed to add repo: " + err.Error(),
 				})
 				if err2 != nil {
 					return err2
@@ -569,7 +569,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					m = "Repository not found"
 				}
 				_, err2 := b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
-					Content: "ERROR: Failed to add repo: " + m,
+					Content: ":x: Failed to add repo: " + m,
 				})
 				if err2 != nil {
 					return err2
@@ -592,7 +592,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				action = "updated"
 			}
 			_, err = b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
-				Content: fmt.Sprintf("Repo %s: %s", action, r.Name()),
+				Content: fmt.Sprintf(":white_check_mark: Repo %s: %s", action, r.Name()),
 			})
 			if err != nil {
 				return err
