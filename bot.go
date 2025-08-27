@@ -145,7 +145,7 @@ func NewBot(st *Storage, ds *discordgo.Session, appID string) *Bot {
 		st:    st,
 	}
 	ds.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		slog.Info("Bot is up!")
+		slog.Info("Bot is up", "appID", appID)
 	})
 	ds.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		if err := b.handleInteraction(i); err != nil {

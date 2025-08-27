@@ -18,12 +18,22 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// TODOs
-// [x] Enter repos via URL
-// [x] Test repos token during creation process
-// [ ] Add version
+// Version - needs to be injected via ldflags.
+var Version = "0.0.0"
 
 func main() {
+	appIDFlag := flag.String("app-id", "", "Discord app ID. Can be set by env.")
+	botTokenFlag := flag.String("bot-token", "", "Discord bot token. Can be set by env.")
+	logLevelFlag := flag.String("log-level", "info", "Set log level for this session. Can be set by env.")
+	resetCommandsFlag := flag.Bool("reset-commands", false, "Recreates Discord commands. Requires user re-install.")
+	versionFlag := flag.Bool("version", false, "Shows the version.")
+	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(Version)
+		os.Exit(0)
+	}
+
 	err := godotenv.Load()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -33,30 +43,28 @@ func main() {
 	} else {
 		slog.Info("env file loaded")
 	}
-	appIDFlag := flag.String("app-id", os.Getenv("APP_ID"), "Discord app ID. Can be set by env.")
-	botTokenFlag := flag.String("bot-token", os.Getenv("BOT_TOKEN"), "Discord bot token. Can be set by env.")
-	logLevelFlag := flag.String("log-level", cmp.Or(os.Getenv("LOG_LEVEL"), "info"), "Set log level for this session. Can be set by env.")
-	resetCommandsFlag := flag.Bool("reset-commands", false, "recreates Discord commands. Requires user re-install.")
-	flag.Parse()
 
 	// Validations
-	if *appIDFlag == "" {
+	appID := cmp.Or(*appIDFlag, os.Getenv("APP_ID"))
+	if appID == "" {
 		slog.Error("app ID missing")
 		os.Exit(1)
 	}
-	if *botTokenFlag == "" {
+	botToken := cmp.Or(*botTokenFlag, os.Getenv("BOT_TOKEN"))
+	if botToken == "" {
 		slog.Error("bot token missing")
 		os.Exit(1)
 	}
 
 	// set manual log level for this session if requested
+	logLevel := cmp.Or(*logLevelFlag, os.Getenv("LOG_LEVEL"))
 	m := map[string]slog.Level{
 		"debug": slog.LevelDebug,
 		"info":  slog.LevelInfo,
 		"warn":  slog.LevelWarn,
 		"error": slog.LevelError,
 	}
-	l, found := m[strings.ToLower(*logLevelFlag)]
+	l, found := m[strings.ToLower(logLevel)]
 	if !found {
 		fmt.Println("valid log levels are: ", strings.Join(slices.Collect(maps.Keys(m)), ", "))
 		os.Exit(1)
@@ -78,14 +86,14 @@ func main() {
 	}
 
 	// Start bot
-	ds, err := discordgo.New("Bot " + *botTokenFlag)
+	ds, err := discordgo.New("Bot " + botToken)
 	if err != nil {
 		slog.Error("Failed to create Discord session", "error", err)
 		os.Exit(1)
 	}
 	ds.Identify.Intents = discordgo.IntentMessageContent
 	ds.UserAgent = "SupportBot (https://github.com/ErikKalkoken/discord-supportbot, 0.0.0)"
-	b := NewBot(st, ds, *appIDFlag)
+	b := NewBot(st, ds, appID)
 	if err := ds.Open(); err != nil {
 		slog.Error("Cannot open the Discord session", "error", err)
 		os.Exit(1)
