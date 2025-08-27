@@ -2,6 +2,8 @@
 
 A Discord bot for creating Github issues from messages.
 
+[![Go](https://github.com/ErikKalkoken/discord-supportbot/actions/workflows/go.yml/badge.svg)](https://github.com/ErikKalkoken/discord-supportbot/actions/workflows/go.yml)
+
 ## Installation
 
 ### Discord App creation
