@@ -27,20 +27,17 @@ var (
 const (
 	cmdIssueCreateBug     = "Create bug report"
 	cmdIssueCreateFeature = "Create feature request"
-	cmdRepoAdd            = "add"
-	cmdRepoBase           = "repos"
-	cmdRepoManage         = "manage"
+	cmdManage             = "issuebot"
 )
 
 // Discord custom IDs for interactions
 const (
-	idIssueCreateRepo  = "issueCreateRepo"
-	idIssueCreateTitle = "issueCreateTitle"
-	idRepoAdd          = "repoAdd"
-	idRepoDelete       = "repoDelete"
-	idRepoTest         = "repoTest"
-	idIssueCreateURL   = "issueCreateURL"
-	idIssueCreateToken = "issueCreateToken"
+	idIssueCreateIssue1 = "issueCreateIssue1-"
+	idIssueCreateIssue2 = "issueCreateIssue2-"
+	idRepoAdd1          = "repoAdd1"
+	idRepoAdd2          = "repoAdd2-"
+	idRepoDelete        = "repoDelete-"
+	idRepoTest          = "repoTest-"
 )
 
 type issueType uint
@@ -80,8 +77,8 @@ type createIssueData struct {
 // Discord commands
 var commands = []discordgo.ApplicationCommand{
 	{
-		Name:        cmdRepoBase,
-		Description: "Control repositories",
+		Name:        cmdManage,
+		Description: "Manage repositores",
 		Type:        discordgo.ChatApplicationCommand,
 		IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
 			discordgo.ApplicationIntegrationUserInstall,
@@ -90,18 +87,6 @@ var commands = []discordgo.ApplicationCommand{
 			discordgo.InteractionContextBotDM,
 			discordgo.InteractionContextPrivateChannel,
 			discordgo.InteractionContextGuild,
-		},
-		Options: []*discordgo.ApplicationCommandOption{
-			{
-				Description: "Manage repos",
-				Type:        discordgo.ApplicationCommandOptionSubCommand,
-				Name:        cmdRepoManage,
-			},
-			{
-				Description: "Add repo",
-				Type:        discordgo.ApplicationCommandOptionSubCommand,
-				Name:        cmdRepoAdd,
-			},
 		},
 	},
 	{
@@ -246,7 +231,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 						discordgo.ActionsRow{
 							Components: []discordgo.MessageComponent{
 								discordgo.SelectMenu{
-									CustomID:    idIssueCreateRepo + sessionID,
+									CustomID:    idIssueCreateIssue1 + sessionID,
 									Placeholder: "Choose repo",
 									Options:     options,
 								},
@@ -266,30 +251,21 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		case cmdIssueCreateFeature:
 			return createIssue(featureRequest)
 
-		case cmdRepoBase:
-			if len(data.Options) == 0 {
-				return fmt.Errorf("expected command options")
+		case cmdManage:
+			err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+				Data: &discordgo.InteractionResponseData{
+					Flags: discordgo.MessageFlagsEphemeral,
+				},
+			})
+			if err != nil {
+				return err
 			}
-			cmdOption := data.Options[0]
-			switch cmdOption.Name {
-
-			case cmdRepoManage:
-				repos, err := b.st.ListReposForUser(userID)
-				if err != nil {
-					return err
-				}
-				if len(repos) == 0 {
-					return respondWithMessage(":exclamation: No repos yet")
-				}
-				err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
-					Data: &discordgo.InteractionResponseData{
-						Flags: discordgo.MessageFlagsEphemeral,
-					},
-				})
-				if err != nil {
-					return err
-				}
+			repos, err := b.st.ListReposForUser(userID)
+			if err != nil {
+				return err
+			}
+			if len(repos) >= 0 {
 				const maxReposPerPage = 20
 				pages := int(math.Ceil(float64(len(repos)) / maxReposPerPage))
 				page := 1
@@ -335,45 +311,26 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					}
 					page++
 				}
-				return nil
-
-			case cmdRepoAdd:
-				err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-					Type: discordgo.InteractionResponseModal,
-					Data: &discordgo.InteractionResponseData{
-						CustomID: idRepoAdd + userID,
-						Title:    "Add repo",
+			}
+			_, err = b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
+				Flags: discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
+				Components: []discordgo.MessageComponent{
+					discordgo.ActionsRow{
 						Components: []discordgo.MessageComponent{
-							discordgo.ActionsRow{
-								Components: []discordgo.MessageComponent{
-									discordgo.TextInput{
-										CustomID:    idIssueCreateURL,
-										Label:       "Repository URL",
-										Placeholder: "https://github.com/{OWNER}/{REPO}",
-										Style:       discordgo.TextInputShort,
-										Required:    true,
-									},
-								},
-							},
-							discordgo.ActionsRow{
-								Components: []discordgo.MessageComponent{
-									discordgo.TextInput{
-										CustomID:    idIssueCreateToken,
-										Label:       "Token",
-										Placeholder: "Github issues read & write access",
-										Style:       discordgo.TextInputShort,
-										Required:    true,
-									},
-								},
+							discordgo.Button{
+								Label:    "Add repository",
+								CustomID: idRepoAdd1,
 							},
 						},
 					},
-				})
+				},
+			})
+			if err != nil {
 				return err
-
-			default:
-				return fmt.Errorf("unhandled command option: %s", cmdOption.StringValue())
 			}
+
+			return nil
+
 		}
 		return fmt.Errorf("unhandled application command: %s", name)
 
@@ -381,7 +338,41 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		data := ic.MessageComponentData()
 		customID := data.CustomID
 
-		if sessionID, found := strings.CutPrefix(customID, idIssueCreateRepo); found {
+		if customID == idRepoAdd1 {
+			err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseModal,
+				Data: &discordgo.InteractionResponseData{
+					CustomID: idRepoAdd2 + userID,
+					Title:    "Add repo",
+					Components: []discordgo.MessageComponent{
+						discordgo.ActionsRow{
+							Components: []discordgo.MessageComponent{
+								discordgo.TextInput{
+									CustomID:    "url",
+									Label:       "Repository URL",
+									Placeholder: "https://github.com/{OWNER}/{REPO}",
+									Style:       discordgo.TextInputShort,
+									Required:    true,
+								},
+							},
+						},
+						discordgo.ActionsRow{
+							Components: []discordgo.MessageComponent{
+								discordgo.TextInput{
+									CustomID:    "token",
+									Label:       "Token",
+									Placeholder: "Github issues read & write access",
+									Style:       discordgo.TextInputShort,
+									Required:    true,
+								},
+							},
+						},
+					},
+				},
+			})
+			return err
+
+		} else if sessionID, found := strings.CutPrefix(customID, idIssueCreateIssue1); found {
 			x2, ok := b.sessions.Load(sessionID)
 			if !ok {
 				return fmt.Errorf("failed to load session")
@@ -396,7 +387,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseModal,
 				Data: &discordgo.InteractionResponseData{
-					CustomID: idIssueCreateTitle + sessionID,
+					CustomID: idIssueCreateIssue2 + sessionID,
 					Title:    fmt.Sprintf("Create %s [2 / 2]", s.issueType.Display()),
 					Components: []discordgo.MessageComponent{
 						discordgo.ActionsRow{
@@ -483,7 +474,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		data := ic.ModalSubmitData()
 		customID := data.CustomID
 
-		if sessionID, found := strings.CutPrefix(customID, idIssueCreateTitle); found {
+		if sessionID, found := strings.CutPrefix(customID, idIssueCreateIssue2); found {
 			x, ok := b.sessions.Load(sessionID)
 			if !ok {
 				return fmt.Errorf("failed to load session")
@@ -531,7 +522,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			b.sessions.Delete(sessionID)
 			return nil
 
-		} else if userID, found := strings.CutPrefix(customID, idRepoAdd); found {
+		} else if userID, found := strings.CutPrefix(customID, idRepoAdd2); found {
 			err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
