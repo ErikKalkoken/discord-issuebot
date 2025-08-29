@@ -27,26 +27,19 @@ func main() {
 	logLevelFlag := flag.String("log-level", "info", "Set log level for this session. Can be set by env.")
 	resetCommandsFlag := flag.Bool("reset-commands", false, "Recreates Discord commands. Requires user re-install.")
 	versionFlag := flag.Bool("version", false, "Shows the version.")
-	testFlag := flag.Bool("test", false, "")
+	exportFlag := flag.Bool("export", false, "export data as JSON")
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Println(Version)
 		os.Exit(0)
 	}
-
-	if *testFlag {
-		os.Exit(0)
-	}
-
 	err := godotenv.Load()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			slog.Error("Error loading .env file", "error", err)
 			os.Exit(1)
 		}
-	} else {
-		slog.Info("env file loaded")
 	}
 
 	// Validations
@@ -88,6 +81,16 @@ func main() {
 	if err := st.Init(); err != nil {
 		slog.Error("Failed to init database", "error", err)
 		os.Exit(1)
+	}
+
+	if *exportFlag {
+		data, err := st.ExportRepos()
+		if err != nil {
+			slog.Error("Failed to list all repos", "error", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(data))
+		os.Exit(0)
 	}
 
 	// Start bot

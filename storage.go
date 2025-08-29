@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -137,25 +138,6 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 	return r.toRepo()
 }
 
-// func (st *Storage) GetRepo(ctx context.Context, userID, owner, repo string) (*Repo, error) {
-// 	r := new(Repo)
-// 	err := st.db.View(func(tx *bolt.Tx) error {
-// 		repos := tx.Bucket([]byte(bucketRepos))
-// 		index := tx.Bucket([]byte(bucketReposIndex1))
-// 		bid := index.Get(makeUniqueID(userID, owner, repo))
-// 		if bid == nil {
-// 			return ErrNotFound
-// 		}
-// 		data := repos.Get([]byte(bid))
-// 		if data == nil {
-// 			return ErrNotFound
-// 		}
-// 		err := json.Unmarshal(data, &r)
-// 		return err
-// 	})
-// 	return r, err
-// }
-
 func (st *Storage) ListRepoIDs() ([]int, error) {
 	ids := make([]int, 0)
 	err := st.db.View(func(tx *bolt.Tx) error {
@@ -174,6 +156,34 @@ func (st *Storage) ListRepoIDs() ([]int, error) {
 		return nil, fmt.Errorf("ListRepoIDs: %w", err)
 	}
 	return ids, err
+}
+
+func (st *Storage) ExportRepos() ([]byte, error) {
+	wrapErr := func(err error) error {
+		return fmt.Errorf("ExportRepos: %w", err)
+	}
+	repos := make([]repoObj, 0)
+	err := st.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketRepos))
+		err := b.ForEach(func(_, data []byte) error {
+			var r repoObj
+			if err := json.Unmarshal(data, &r); err != nil {
+				return err
+			}
+			repos = append(repos, r)
+			return nil
+		})
+		return err
+	})
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	if len(repos) > 0 {
+		slices.SortFunc(repos, func(a, b repoObj) int {
+			return cmp.Compare(a.ID, b.ID)
+		})
+	}
+	return json.MarshalIndent(repos, "", "    ")
 }
 
 // ListReposForUser returns the repos of a user ordered by repo name.
