@@ -27,10 +27,15 @@ func main() {
 	logLevelFlag := flag.String("log-level", "info", "Set log level for this session. Can be set by env.")
 	resetCommandsFlag := flag.Bool("reset-commands", false, "Recreates Discord commands. Requires user re-install.")
 	versionFlag := flag.Bool("version", false, "Shows the version.")
+	testFlag := flag.Bool("test", false, "")
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Println(Version)
+		os.Exit(0)
+	}
+
+	if *testFlag {
 		os.Exit(0)
 	}
 

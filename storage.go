@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 
 	bolt "go.etcd.io/bbolt"
@@ -121,7 +121,7 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 	if id == 0 {
 		return nil, wrapErr(ErrInvalidArguments)
 	}
-	r := new(Repo)
+	r := repoObj{}
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
 		data := b.Get(itob(id))
@@ -134,7 +134,7 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	return r, err
+	return r.toRepo()
 }
 
 // func (st *Storage) GetRepo(ctx context.Context, userID, owner, repo string) (*Repo, error) {
@@ -161,7 +161,7 @@ func (st *Storage) ListRepoIDs() ([]int, error) {
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
 		return b.ForEach(func(_, data []byte) error {
-			r := new(Repo)
+			var r repoObj
 			if err := json.Unmarshal(data, &r); err != nil {
 				return err
 			}
@@ -184,11 +184,11 @@ func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
 	if userID == "" {
 		return nil, wrapErr(ErrInvalidArguments)
 	}
-	repos := make([]*Repo, 0)
+	repos := make([]repoObj, 0)
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
 		err := b.ForEach(func(_, data []byte) error {
-			r := new(Repo)
+			var r repoObj
 			if err := json.Unmarshal(data, &r); err != nil {
 				return err
 			}
@@ -203,12 +203,21 @@ func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	if len(repos) > 0 {
-		slices.SortFunc(repos, func(a, b *Repo) int {
+	repos2 := make([]*Repo, 0)
+	for _, r := range repos {
+		r2, err := r.toRepo()
+		if err != nil {
+			slog.Warn("failed to convert", "id", r.ID, "err", err)
+			continue
+		}
+		repos2 = append(repos2, r2)
+	}
+	if len(repos2) > 0 {
+		slices.SortFunc(repos2, func(a, b *Repo) int {
 			return strings.Compare(a.Name(), b.Name())
 		})
 	}
-	return repos, nil
+	return repos2, nil
 }
 
 type UpdateOrCreateRepoParams struct {
@@ -216,6 +225,7 @@ type UpdateOrCreateRepoParams struct {
 	Owner  string
 	Token  string
 	UserID string
+	Vendor Vendor
 }
 
 func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool, error) {
@@ -225,17 +235,22 @@ func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool
 	if arg.Repo == "" || arg.Owner == "" || arg.Token == "" || arg.UserID == "" {
 		return nil, false, wrapErr(ErrInvalidArguments)
 	}
-	r := Repo{
+	r := repoObj{
 		Repo:   arg.Repo,
 		Owner:  arg.Owner,
 		Token:  arg.Token,
 		UserID: arg.UserID,
 	}
+	v, ok := repoVendorToDB(arg.Vendor)
+	if !ok {
+		return nil, false, wrapErr(fmt.Errorf("invalid vendor: %v", arg.Vendor))
+	}
+	r.Vendor = v
 	var created bool
 	err := st.db.Update(func(tx *bolt.Tx) error {
 		repos := tx.Bucket([]byte(bucketRepos))
 		index := tx.Bucket([]byte(bucketReposIndex1))
-		uniqueID := makeUniqueID(r.UserID, r.Owner, r.Repo)
+		uniqueID := r.makeUniqueID()
 		bid := index.Get([]byte(uniqueID))
 		if bid == nil {
 			id, _ := repos.NextSequence()
@@ -258,16 +273,60 @@ func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool
 		return nil, false, wrapErr(err)
 	}
 	slog.Info("Repo updated/created", "id", r.ID, "created", created)
-	return &r, created, nil
+	r2, err := r.toRepo()
+	return r2, created, err
 }
 
-// itob returns an 8-byte big endian representation of v.
+// itob returns the byte representation of an integer.
 func itob(v int) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(v))
-	return b
+	return []byte(strconv.Itoa(v))
 }
 
-func makeUniqueID(userID, owner, repo string) []byte {
-	return fmt.Appendf(nil, "%s-%s-%s", userID, owner, repo)
+type repoObj struct {
+	ID     int
+	Repo   string
+	Owner  string
+	Token  string
+	UserID string
+	Vendor string
+}
+
+func (x repoObj) toRepo() (*Repo, error) {
+	r := &Repo{
+		ID:     x.ID,
+		Repo:   x.Repo,
+		Owner:  x.Owner,
+		Token:  x.Token,
+		UserID: x.UserID,
+	}
+	v, ok := repoVendorFromDB(x.Vendor)
+	if !ok {
+		return nil, fmt.Errorf("invalid vendor: %s", x.Vendor)
+	}
+	r.Vendor = v
+	return r, nil
+}
+
+func (x repoObj) makeUniqueID() []byte {
+	return fmt.Appendf(nil, "%s-%s-%s-%s", x.UserID, x.Vendor, x.Owner, x.Repo)
+}
+
+func repoVendorToDB(v Vendor) (string, bool) {
+	switch v {
+	case gitHub:
+		return "github", true
+	case gitLab:
+		return "gitlab", true
+	}
+	return "", false
+}
+
+func repoVendorFromDB(s string) (Vendor, bool) {
+	switch s {
+	case "github":
+		return gitHub, true
+	case "gitlab":
+		return gitLab, true
+	}
+	return undefined, false
 }

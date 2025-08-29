@@ -31,6 +31,7 @@ func TestStorage(t *testing.T) {
 			Repo:   "repo",
 			UserID: "user",
 			Token:  "token",
+			Vendor: gitHub,
 		})
 		if assert.NoError(t, err) {
 			assert.True(t, created)
@@ -38,6 +39,7 @@ func TestStorage(t *testing.T) {
 			assert.Equal(t, "repo", r1.Repo)
 			assert.Equal(t, "user", r1.UserID)
 			assert.Equal(t, "token", r1.Token)
+			assert.Equal(t, gitHub, r1.Vendor)
 			r2, err := st.GetRepo(r1.ID)
 			if assert.NoError(t, err) {
 				assert.Equal(t, r1, r2)
@@ -54,6 +56,7 @@ func TestStorage(t *testing.T) {
 			Repo:   r2.Repo,
 			UserID: r2.UserID,
 			Token:  "token",
+			Vendor: gitHub,
 		})
 		if assert.NoError(t, err) {
 			assert.False(t, created)
@@ -155,6 +158,9 @@ func createRepo(t *testing.T, st *Storage, args ...UpdateOrCreateRepoParams) *Re
 	}
 	if arg.Token == "" {
 		arg.Token = fake.SimplePassword()
+	}
+	if arg.Vendor == undefined {
+		arg.Vendor = gitHub
 	}
 	r, _, err := st.UpdateOrCreateRepo(arg)
 	if err != nil {

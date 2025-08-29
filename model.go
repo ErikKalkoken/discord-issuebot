@@ -1,6 +1,27 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
+
+type Vendor uint
+
+const (
+	undefined Vendor = iota
+	gitHub
+	gitLab
+)
+
+func (v Vendor) Host() string {
+	switch v {
+	case gitHub:
+		return "github.com"
+	case gitLab:
+		return "gitlab.com"
+	}
+	return ""
+}
 
 type Repo struct {
 	ID     int
@@ -8,12 +29,19 @@ type Repo struct {
 	Owner  string
 	Token  string
 	UserID string
+	Vendor Vendor
+}
+
+func (r Repo) isValid() bool {
+	return r.Owner != "" && r.Repo != "" && r.Token != "" && r.Vendor != undefined && r.UserID != ""
 }
 
 func (r Repo) Name() string {
-	return fmt.Sprintf("github.com/%s/%s", r.Owner, r.Repo)
+	s, _ := url.JoinPath(r.Vendor.Host(), r.Owner, r.Repo)
+	return s
 }
 
 func (r Repo) URL() string {
-	return fmt.Sprintf("https://github.com/%s/%s", r.Owner, r.Repo)
+	s, _ := url.JoinPath(r.Vendor.Host(), r.Owner, r.Repo)
+	return fmt.Sprintf("https://%s", s)
 }
