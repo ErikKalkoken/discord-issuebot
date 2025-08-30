@@ -1,8 +1,8 @@
-# discord-supportbot
+# discord-issuebot
 
 A bot for creating GitHub or GitLab issues from messages on Discord.
 
-[![Go](https://github.com/ErikKalkoken/discord-supportbot/actions/workflows/go.yml/badge.svg)](https://github.com/ErikKalkoken/discord-supportbot/actions/workflows/go.yml)
+[![Go](https://github.com/ErikKalkoken/discord-issuebot/actions/workflows/go.yml/badge.svg)](https://github.com/ErikKalkoken/discord-issuebot/actions/workflows/go.yml)
 
 ## Installation
 
@@ -11,7 +11,7 @@ A bot for creating GitHub or GitLab issues from messages on Discord.
 Create a Discord app with the following settings:
 
 - General Information
-  - Name: supportbot
+  - Name: Issue Bot
   - App Icon: You can find the official icon on the repo in the resources directory.
 
 - Installation
@@ -24,30 +24,30 @@ Create a Discord app with the following settings:
 ### Service installation
 
 > [!NOTE]
-> This guide uses [supervisor](http://supervisord.org/index.html) for running supportbot as a service. Please make sure it is installed on your system before continuing.
+> This guide uses [supervisor](http://supervisord.org/index.html) for running issuebot as a service. Please make sure it is installed on your system before continuing.
 
 #### Create user
 
 Create a "service" user with disabled login:
 
 ```sh
-sudo adduser --disabled-login supportbot
+sudo adduser --disabled-login issuebot
 ```
 
 Switch to the service user and move to the home directory:
 
 ```sh
-sudo su supportbot
+sudo su issuebot
 cd ~
 ```
 
 ### Install binary (WIP)
 
-Download and decompress the latest release from the [releases page](https://github.com/ErikKalkoken/supportbot/releases):
+Download and decompress the latest release from the [releases page](https://github.com/ErikKalkoken/issuebot/releases):
 
 ```sh
-wget https://github.com/ErikKalkoken/supportbot/releases/download/vX.Y.Z/supportbot-X.Y.Z-linux-amd64.tar.gz
-tar -xvzf supportbot-X.Y.Z-linux-amd64.tar.gz
+wget https://github.com/ErikKalkoken/issuebot/releases/download/vX.Y.Z/issuebot-X.Y.Z-linux-amd64.tar.gz
+tar -xvzf issuebot-X.Y.Z-linux-amd64.tar.gz
 ```
 
 > [!TIP]
@@ -58,29 +58,29 @@ tar -xvzf supportbot-X.Y.Z-linux-amd64.tar.gz
 Download supervisor configuration file:
 
 ```sh
-wget https://raw.githubusercontent.com/ErikKalkoken/supportbot/main/config/supervisor.conf
+wget https://raw.githubusercontent.com/ErikKalkoken/issuebot/main/config/supervisor.conf
 ```
 
 Setup and configure:
 
 ```sh
-chmod +x supportbot
-touch supportbot.log
+chmod +x issuebot
+touch issuebot.log
 ```
 
 Add your Discord app ID and bot token to the supervisor.conf file.
 
-Add supportbot to supervisor:
+Add issuebot to supervisor:
 
 ```sh
-sudo ln -s /home/supportbot/supervisor.conf /etc/supervisor/conf.d/supportbot.conf
+sudo ln -s /home/issuebot/supervisor.conf /etc/supervisor/conf.d/issuebot.conf
 sudo systemctl restart supervisor
 ```
 
-Restart the supportbot service.
+Restart the issuebot service.
 
 ```sh
-sudo supervisorctl restart supportbot
+sudo supervisorctl restart issuebot
 ```
 
 ## Credits

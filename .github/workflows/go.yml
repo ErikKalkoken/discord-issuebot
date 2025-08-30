@@ -3,7 +3,7 @@ name: Go
 
 env:
   GOVERSION: "1.24"
-  NAME: "supportbot"
+  NAME: "issuebot"
   PREFIX: ""
 
 on:

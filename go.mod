@@ -1,4 +1,4 @@
-module github.com/erikkalkoken/discord-supportbot
+module github.com/erikkalkoken/discord-issuebot
 
 go 1.24
 

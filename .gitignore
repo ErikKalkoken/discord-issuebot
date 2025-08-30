@@ -33,5 +33,5 @@ go.work.sum
 
 # other
 *.bak
-data.db
+*.db
 .temp/

@@ -21,6 +21,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const (
+	name    = "issuebot"
+	dbName  = name + ".db"
+	repoURL = "https://github.com/ErikKalkoken/discord-issuebot"
+)
+
 // Version - needs to be injected via ldflags.
 var Version = "0.0.0"
 
@@ -72,7 +78,7 @@ func main() {
 	}
 	slog.SetLogLoggerLevel(l)
 
-	db, err := bolt.Open("data.db", 0600, nil)
+	db, err := bolt.Open(dbName, 0600, nil)
 	if err != nil {
 		slog.Error("Failed to open database", "error", err)
 		os.Exit(1)
@@ -117,7 +123,7 @@ func main() {
 		os.Exit(1)
 	}
 	ds.Identify.Intents = discordgo.IntentMessageContent
-	ds.UserAgent = "SupportBot (https://github.com/ErikKalkoken/discord-supportbot, 0.0.0)"
+	ds.UserAgent = fmt.Sprintf("%s (%s, %s)", name, repoURL, Version)
 
 	api := newRepoAPI()
 	api.HTTPClient = &http.Client{
