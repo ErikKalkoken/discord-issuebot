@@ -586,7 +586,7 @@ func (b *Bot) newSessionID() string {
 func parseRepoURL(s string) (string, string, Vendor, error) {
 	u, err := url.ParseRequestURI(s)
 	if err != nil {
-		return "", "", undefined, err
+		return "", "", "", err
 	}
 	var v Vendor
 	switch u.Host {
@@ -595,11 +595,11 @@ func parseRepoURL(s string) (string, string, Vendor, error) {
 	case "gitlab.com":
 		v = gitLab
 	default:
-		return "", "", undefined, fmt.Errorf("host must be github.com or gitlab.com: %w", ErrInvalidURL)
+		return "", "", "", fmt.Errorf("host must be github.com or gitlab.com: %w", ErrInvalidURL)
 	}
 	x := strings.Split(u.Path, "/")
 	if len(x) != 3 {
-		return "", "", undefined, fmt.Errorf("path must have exactly two parts: %w", ErrInvalidURL)
+		return "", "", "", fmt.Errorf("path must have exactly two parts: %w", ErrInvalidURL)
 	}
 	return x[1], x[2], v, nil
 }

@@ -17,10 +17,10 @@ func TestParseURL(t *testing.T) {
 	}{
 		{"github happy case", "https://github.com/ErikKalkoken/evebuddy", "ErikKalkoken", "evebuddy", gitHub, true},
 		{"gitlab happy case", "https://gitlab.com/ErikKalkoken/evebuddy", "ErikKalkoken", "evebuddy", gitLab, true},
-		{"invalid host", "https://bitbucket.com/ErikKalkoken/evebuddy", "", "", undefined, false},
+		{"invalid host", "https://bitbucket.com/ErikKalkoken/evebuddy", "", "", "", false},
 		{"path too short", "https://gitlab.com/ErikKalkoken", "", "", gitHub, false},
 		{"path too long", "https://gitlab.com/ErikKalkoken/x/y", "", "", gitHub, false},
-		{"invalid URL", "xyz", "", "", undefined, false},
+		{"invalid URL", "xyz", "", "", "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

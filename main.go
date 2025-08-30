@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -84,7 +85,22 @@ func main() {
 	}
 
 	if *exportFlag {
-		data, err := st.ExportRepos()
+		data, err := func() ([]byte, error) {
+			repos, err := st.ListAllRepos()
+			if err != nil {
+				return nil, err
+			}
+			if len(repos) > 0 {
+				slices.SortFunc(repos, func(a, b *Repo) int {
+					return cmp.Compare(a.ID, b.ID)
+				})
+			}
+			data, err := json.MarshalIndent(repos, "", "    ")
+			if err != nil {
+				return nil, err
+			}
+			return data, nil
+		}()
 		if err != nil {
 			slog.Error("Failed to list all repos", "error", err)
 			os.Exit(1)

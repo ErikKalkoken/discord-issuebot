@@ -159,7 +159,7 @@ func createRepo(t *testing.T, st *Storage, args ...UpdateOrCreateRepoParams) *Re
 	if arg.Token == "" {
 		arg.Token = fake.SimplePassword()
 	}
-	if arg.Vendor == undefined {
+	if arg.Vendor == "" {
 		arg.Vendor = gitHub
 	}
 	r, _, err := st.UpdateOrCreateRepo(arg)

@@ -5,13 +5,17 @@ import (
 	"net/url"
 )
 
-type Vendor uint
+// Vendor represents a vendor that provides git repositories like GitHub.
+type Vendor string
 
 const (
-	undefined Vendor = iota
-	gitHub
-	gitLab
+	gitHub Vendor = "github"
+	gitLab Vendor = "gitlab"
 )
+
+func (v Vendor) String() string {
+	return string(v)
+}
 
 func (v Vendor) Host() string {
 	switch v {
@@ -23,17 +27,18 @@ func (v Vendor) Host() string {
 	return ""
 }
 
+// Repo represents a repository for creating issues.
 type Repo struct {
-	ID     int
-	Repo   string
-	Owner  string
-	Token  string
-	UserID string
-	Vendor Vendor
+	ID     int    `json:"id"`
+	Repo   string `json:"repo"`
+	Owner  string `json:"owner"`
+	Token  string `json:"token"`
+	UserID string `json:"user_id"` // Discord user ID
+	Vendor Vendor `json:"vendor"`
 }
 
 func (r Repo) isValid() bool {
-	return r.Owner != "" && r.Repo != "" && r.Token != "" && r.Vendor != undefined && r.UserID != ""
+	return r.Owner != "" && r.Repo != "" && r.Token != "" && r.Vendor != "" && r.UserID != ""
 }
 
 func (r Repo) Name() string {

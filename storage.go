@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -122,7 +121,7 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 	if id == 0 {
 		return nil, wrapErr(ErrInvalidArguments)
 	}
-	r := repoObj{}
+	r := new(Repo)
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
 		data := b.Get(itob(id))
@@ -135,7 +134,7 @@ func (st *Storage) GetRepo(id int) (*Repo, error) {
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	return r.toRepo()
+	return r, nil
 }
 
 func (st *Storage) ListRepoIDs() ([]int, error) {
@@ -143,7 +142,7 @@ func (st *Storage) ListRepoIDs() ([]int, error) {
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
 		return b.ForEach(func(_, data []byte) error {
-			var r repoObj
+			r := new(Repo)
 			if err := json.Unmarshal(data, &r); err != nil {
 				return err
 			}
@@ -158,15 +157,15 @@ func (st *Storage) ListRepoIDs() ([]int, error) {
 	return ids, err
 }
 
-func (st *Storage) ExportRepos() ([]byte, error) {
+func (st *Storage) ListAllRepos() ([]*Repo, error) {
 	wrapErr := func(err error) error {
 		return fmt.Errorf("ExportRepos: %w", err)
 	}
-	repos := make([]repoObj, 0)
+	repos := make([]*Repo, 0)
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
 		err := b.ForEach(func(_, data []byte) error {
-			var r repoObj
+			r := new(Repo)
 			if err := json.Unmarshal(data, &r); err != nil {
 				return err
 			}
@@ -178,12 +177,7 @@ func (st *Storage) ExportRepos() ([]byte, error) {
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	if len(repos) > 0 {
-		slices.SortFunc(repos, func(a, b repoObj) int {
-			return cmp.Compare(a.ID, b.ID)
-		})
-	}
-	return json.MarshalIndent(repos, "", "    ")
+	return repos, nil
 }
 
 // ListReposForUser returns the repos of a user ordered by repo name.
@@ -194,11 +188,11 @@ func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
 	if userID == "" {
 		return nil, wrapErr(ErrInvalidArguments)
 	}
-	repos := make([]repoObj, 0)
+	repos := make([]*Repo, 0)
 	err := st.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketRepos))
 		err := b.ForEach(func(_, data []byte) error {
-			var r repoObj
+			r := new(Repo)
 			if err := json.Unmarshal(data, &r); err != nil {
 				return err
 			}
@@ -213,21 +207,12 @@ func (st *Storage) ListReposForUser(userID string) ([]*Repo, error) {
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	repos2 := make([]*Repo, 0)
-	for _, r := range repos {
-		r2, err := r.toRepo()
-		if err != nil {
-			slog.Warn("failed to convert", "id", r.ID, "err", err)
-			continue
-		}
-		repos2 = append(repos2, r2)
-	}
-	if len(repos2) > 0 {
-		slices.SortFunc(repos2, func(a, b *Repo) int {
+	if len(repos) > 0 {
+		slices.SortFunc(repos, func(a, b *Repo) int {
 			return strings.Compare(a.Name(), b.Name())
 		})
 	}
-	return repos2, nil
+	return repos, nil
 }
 
 type UpdateOrCreateRepoParams struct {
@@ -245,22 +230,18 @@ func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool
 	if arg.Repo == "" || arg.Owner == "" || arg.Token == "" || arg.UserID == "" {
 		return nil, false, wrapErr(ErrInvalidArguments)
 	}
-	r := repoObj{
+	r := &Repo{
 		Repo:   arg.Repo,
 		Owner:  arg.Owner,
 		Token:  arg.Token,
 		UserID: arg.UserID,
+		Vendor: arg.Vendor,
 	}
-	v, ok := repoVendorToDB(arg.Vendor)
-	if !ok {
-		return nil, false, wrapErr(fmt.Errorf("invalid vendor: %v", arg.Vendor))
-	}
-	r.Vendor = v
 	var created bool
 	err := st.db.Update(func(tx *bolt.Tx) error {
 		repos := tx.Bucket([]byte(bucketRepos))
 		index := tx.Bucket([]byte(bucketReposIndex1))
-		uniqueID := r.makeUniqueID()
+		uniqueID := makeUniqueID(arg.UserID, arg.Vendor.String(), arg.Owner, arg.Repo)
 		bid := index.Get([]byte(uniqueID))
 		if bid == nil {
 			id, _ := repos.NextSequence()
@@ -283,8 +264,7 @@ func (st *Storage) UpdateOrCreateRepo(arg UpdateOrCreateRepoParams) (*Repo, bool
 		return nil, false, wrapErr(err)
 	}
 	slog.Info("Repo updated/created", "id", r.ID, "created", created)
-	r2, err := r.toRepo()
-	return r2, created, err
+	return r, created, err
 }
 
 // itob returns the byte representation of an integer.
@@ -292,51 +272,6 @@ func itob(v int) []byte {
 	return []byte(strconv.Itoa(v))
 }
 
-type repoObj struct {
-	ID     int
-	Repo   string
-	Owner  string
-	Token  string
-	UserID string
-	Vendor string
-}
-
-func (x repoObj) toRepo() (*Repo, error) {
-	r := &Repo{
-		ID:     x.ID,
-		Repo:   x.Repo,
-		Owner:  x.Owner,
-		Token:  x.Token,
-		UserID: x.UserID,
-	}
-	v, ok := repoVendorFromDB(x.Vendor)
-	if !ok {
-		return nil, fmt.Errorf("invalid vendor: %s", x.Vendor)
-	}
-	r.Vendor = v
-	return r, nil
-}
-
-func (x repoObj) makeUniqueID() []byte {
-	return fmt.Appendf(nil, "%s-%s-%s-%s", x.UserID, x.Vendor, x.Owner, x.Repo)
-}
-
-func repoVendorToDB(v Vendor) (string, bool) {
-	switch v {
-	case gitHub:
-		return "github", true
-	case gitLab:
-		return "gitlab", true
-	}
-	return "", false
-}
-
-func repoVendorFromDB(s string) (Vendor, bool) {
-	switch s {
-	case "github":
-		return gitHub, true
-	case "gitlab":
-		return gitLab, true
-	}
-	return undefined, false
+func makeUniqueID(userID, vendor, owner, repo string) []byte {
+	return fmt.Appendf(nil, "%s-%s-%s-%s", userID, vendor, owner, repo)
 }
