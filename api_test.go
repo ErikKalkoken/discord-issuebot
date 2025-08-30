@@ -54,8 +54,8 @@ func TestGitHub(t *testing.T) {
 					return httpmock.NewStringResponse(500, ""), nil
 				}
 				return httpmock.NewJsonResponse(200, map[string]any{
-					"id":      "123",
-					"htmlURL": "url",
+					"id":       "123",
+					"html_url": "url",
 				})
 			})
 		a := newRepoAPI()

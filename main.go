@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
 	"strings"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 
@@ -69,7 +71,6 @@ func main() {
 		os.Exit(1)
 	}
 	slog.SetLogLoggerLevel(l)
-	slog.SetLogLoggerLevel(slog.LevelInfo)
 
 	db, err := bolt.Open("data.db", 0600, nil)
 	if err != nil {
@@ -117,13 +118,18 @@ func main() {
 	}
 	ds.Identify.Intents = discordgo.IntentMessageContent
 	ds.UserAgent = "SupportBot (https://github.com/ErikKalkoken/discord-supportbot, 0.0.0)"
-	b := NewBot(st, ds, appID)
+
+	api := newRepoAPI()
+	api.HTTPClient = &http.Client{
+		Timeout: time.Second * 5,
+	}
+
+	b := NewBot(st, ds, appID, api)
 	if err := ds.Open(); err != nil {
 		slog.Error("Cannot open the Discord session", "error", err)
 		os.Exit(1)
 	}
 	defer ds.Close()
-
 	if err := b.InitCommands(*resetCommandsFlag); err != nil {
 		slog.Error("Failed to init Discord commands", "error", err)
 		os.Exit(1)

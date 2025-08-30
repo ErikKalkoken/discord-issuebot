@@ -122,9 +122,9 @@ type Bot struct {
 	st       *Storage
 }
 
-func NewBot(st *Storage, ds *discordgo.Session, appID string) *Bot {
+func NewBot(st *Storage, ds *discordgo.Session, appID string, api *repoAPI) *Bot {
 	b := &Bot{
-		api:   newRepoAPI(),
+		api:   api,
 		appID: appID,
 		ds:    ds,
 		st:    st,
@@ -341,7 +341,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 								discordgo.TextInput{
 									CustomID:    "token",
 									Label:       "Token",
-									Placeholder: "Github issues read & write access",
+									Placeholder: "Token with permission to read & write issues",
 									Required:    true,
 									Style:       discordgo.TextInputShort,
 								},
@@ -419,7 +419,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			var s string
 			status, err := b.api.checkToken(r)
 			if err != nil {
-				slog.Warn("Failed to get info for github repo", "error", err)
+				slog.Warn("Failed to check token", "error", err)
 				var m string
 				switch status {
 				case http.StatusUnauthorized:
@@ -490,7 +490,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseUpdateMessage,
 				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf(":white_check_mark: Issue created on Github\n%s", htmlURL),
+					Content: fmt.Sprintf(":white_check_mark: Issue created on %s\n%s", r.Name(), htmlURL),
 					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
@@ -531,7 +531,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				Vendor: vendor,
 			})
 			if err != nil {
-				slog.Warn("Failed to get info for github repo", "error", err)
+				slog.Warn("Failed to verify repo", "error", err)
 				var m string
 				switch status {
 				case http.StatusUnauthorized:

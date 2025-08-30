@@ -20,11 +20,11 @@ var ErrHTTPError = errors.New("HTTP error")
 
 // repoAPI allows creating issues on gitlab and github repos.
 type repoAPI struct {
-	httpClient http.Client
+	HTTPClient *http.Client // HTTP client shared by all requests.
 }
 
 func newRepoAPI() *repoAPI {
-	r := &repoAPI{}
+	r := &repoAPI{HTTPClient: http.DefaultClient}
 	return r
 }
 
@@ -52,7 +52,7 @@ func (s repoAPI) gitLabCheckToken(r *Repo) (int, error) {
 	v := url.Values{
 		"private_token": {r.Token},
 	}
-	res, err := s.httpClient.Get(u + "?" + v.Encode())
+	res, err := s.HTTPClient.Get(u + "?" + v.Encode())
 	if err != nil {
 		return 0, wrapErr(err)
 	}
@@ -87,7 +87,7 @@ func (s repoAPI) gitHubCheckInfo(arg *Repo) (int, error) {
 	req.Header.Add("Accept", "application/vnd.github+json")
 	req.Header.Add("Authorization", "Bearer "+arg.Token)
 	req.Header.Add("X-GitHub-Api-Version", "2022-11-28")
-	res, err := s.httpClient.Do(req)
+	res, err := s.HTTPClient.Do(req)
 	if err != nil {
 		return 0, wrapErr(err)
 	}
@@ -206,7 +206,7 @@ func (s repoAPI) gitHubCreateIssue(r *Repo, arg createIssueParams) (string, erro
 		return "", wrapErr(err)
 	}
 	slog.Debug("Received response from github for create issue", "data", info)
-	htmlURL, ok := info["htmlURL"].(string)
+	htmlURL, ok := info["html_url"].(string)
 	if !ok {
 		htmlURL = ""
 	}
