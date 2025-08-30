@@ -1,6 +1,6 @@
 # discord-supportbot
 
-A Discord bot for creating Github issues from messages.
+A bot for creating GitHub or GitLab issues from messages on Discord.
 
 [![Go](https://github.com/ErikKalkoken/discord-supportbot/actions/workflows/go.yml/badge.svg)](https://github.com/ErikKalkoken/discord-supportbot/actions/workflows/go.yml)
 

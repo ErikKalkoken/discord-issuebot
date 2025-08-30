@@ -50,6 +50,14 @@ func (st *Storage) Init() error {
 	return err
 }
 
+func (st *Storage) CountReposForUser(userID string) (int, error) {
+	repos, err := st.ListReposForUser(userID)
+	if err != nil {
+		return 0, fmt.Errorf("CountReposForUser: %w", err)
+	}
+	return len(repos), nil
+}
+
 // DeleteAll deletes all repos.
 // This method is mainly intended for tests.
 func (st *Storage) DeleteAll() error {

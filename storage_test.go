@@ -122,6 +122,31 @@ func TestStorage(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("can count repos for a user", func(t *testing.T) {
+		if err := st.DeleteAll(); err != nil {
+			t.Fatal(err)
+		}
+		user1 := "user1"
+		createRepo(t, st, UpdateOrCreateRepoParams{
+			UserID: user1,
+			Owner:  "alpha",
+			Repo:   "two",
+		})
+		createRepo(t, st, UpdateOrCreateRepoParams{
+			UserID: user1,
+			Owner:  "alpha",
+			Repo:   "first",
+		})
+		createRepo(t, st)
+		if assert.NoError(t, err) {
+			got, err := st.CountReposForUser(user1)
+			if assert.NoError(t, err) {
+				assert.Equal(t, 2, got)
+			}
+		}
+	})
+
 	t.Run("can delete a repo", func(t *testing.T) {
 		if err := st.DeleteAll(); err != nil {
 			t.Fatal(err)

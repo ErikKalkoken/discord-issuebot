@@ -16,29 +16,57 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-var (
-	ErrInvalidURL       = errors.New("invalid repo URL")
-	ErrInvalidArguments = errors.New("invalid arguments")
+const (
+	maxReposPerUser = 50
 )
 
 // Discord command names for interactions
 const (
-	cmdIssueCreateBug     = "Create bug report"
-	cmdIssueCreateFeature = "Create feature request"
-	cmdManage             = "issuebot"
+	cmdIssueCreate = "Create issue"
+	cmdManage      = "issuebot"
 )
+
+// Discord commands
+var commands = []discordgo.ApplicationCommand{
+	{
+		Name:        cmdManage,
+		Description: "Manage repositories",
+		Type:        discordgo.ChatApplicationCommand,
+		IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
+			discordgo.ApplicationIntegrationUserInstall,
+		},
+		Contexts: &[]discordgo.InteractionContextType{
+			discordgo.InteractionContextBotDM,
+			discordgo.InteractionContextPrivateChannel,
+			discordgo.InteractionContextGuild,
+		},
+	},
+	{
+		Name: cmdIssueCreate,
+		Type: discordgo.MessageApplicationCommand,
+		IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
+			discordgo.ApplicationIntegrationUserInstall,
+		},
+		Contexts: &[]discordgo.InteractionContextType{
+			discordgo.InteractionContextBotDM,
+			discordgo.InteractionContextPrivateChannel,
+			discordgo.InteractionContextGuild,
+		},
+	},
+}
 
 // Discord custom IDs for interactions
 const (
 	idIssueCreateIssue1 = "issueCreateIssue1-"
 	idIssueCreateIssue2 = "issueCreateIssue2-"
+	idIssueCreateIssue3 = "issueCreateIssue3-"
 	idRepoAdd1          = "repoAdd1"
 	idRepoAdd2          = "repoAdd2-"
 	idRepoDelete        = "repoDelete-"
 	idRepoTest          = "repoTest-"
 )
 
-type issueType uint
+type issueType int
 
 const (
 	neutralIssue issueType = iota
@@ -72,46 +100,10 @@ type createIssueData struct {
 	title            string
 }
 
-// Discord commands
-var commands = []discordgo.ApplicationCommand{
-	{
-		Name:        cmdManage,
-		Description: "Manage repositories",
-		Type:        discordgo.ChatApplicationCommand,
-		IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
-			discordgo.ApplicationIntegrationUserInstall,
-		},
-		Contexts: &[]discordgo.InteractionContextType{
-			discordgo.InteractionContextBotDM,
-			discordgo.InteractionContextPrivateChannel,
-			discordgo.InteractionContextGuild,
-		},
-	},
-	{
-		Name: cmdIssueCreateBug,
-		Type: discordgo.MessageApplicationCommand,
-		IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
-			discordgo.ApplicationIntegrationUserInstall,
-		},
-		Contexts: &[]discordgo.InteractionContextType{
-			discordgo.InteractionContextBotDM,
-			discordgo.InteractionContextPrivateChannel,
-			discordgo.InteractionContextGuild,
-		},
-	},
-	{
-		Name: cmdIssueCreateFeature,
-		Type: discordgo.MessageApplicationCommand,
-		IntegrationTypes: &[]discordgo.ApplicationIntegrationType{
-			discordgo.ApplicationIntegrationUserInstall,
-		},
-		Contexts: &[]discordgo.InteractionContextType{
-			discordgo.InteractionContextBotDM,
-			discordgo.InteractionContextPrivateChannel,
-			discordgo.InteractionContextGuild,
-		},
-	},
-}
+var (
+	ErrInvalidURL       = errors.New("invalid repo URL")
+	ErrInvalidArguments = errors.New("invalid arguments")
+)
 
 type Bot struct {
 	api      *repoAPI
@@ -193,7 +185,10 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 	switch ic.Type {
 	case discordgo.InteractionApplicationCommand:
 		data := ic.ApplicationCommandData()
-		createIssue := func(it issueType) error {
+		name := data.Name
+		switch name {
+
+		case cmdIssueCreate:
 			messageID := data.TargetID
 			message := data.Resolved.Messages[messageID]
 			s := createIssueData{
@@ -201,7 +196,6 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				authorName:       message.Author.Username,
 				channelID:        ic.ChannelID,
 				guildID:          ic.GuildID,
-				issueType:        it,
 				messageContent:   message.Content,
 				messageID:        message.ID,
 				messageTimestamp: message.Timestamp,
@@ -225,7 +219,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: fmt.Sprintf("Create %s [1 / 2]", s.issueType.Display()),
+					Content: "Create issue [1 / 3]",
 					Flags:   discordgo.MessageFlagsEphemeral,
 					Components: []discordgo.MessageComponent{
 						discordgo.ActionsRow{
@@ -241,15 +235,6 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				},
 			})
 			return err
-		}
-		name := data.Name
-		switch name {
-
-		case cmdIssueCreateBug:
-			return createIssue(bugReport)
-
-		case cmdIssueCreateFeature:
-			return createIssue(featureRequest)
 
 		case cmdManage:
 			err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
@@ -278,7 +263,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 							Components: []discordgo.MessageComponent{
 								discordgo.Button{
 									CustomID: fmt.Sprintf("%s%d", idRepoDelete, r.ID),
-									Label:    "Delete",
+									Label:    "Remove",
 									Style:    discordgo.DangerButton,
 								},
 								discordgo.Button{
@@ -291,7 +276,6 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				}
 				components = append(components, container)
 			}
-
 			components = append(components, discordgo.ActionsRow{
 				Components: []discordgo.MessageComponent{
 					discordgo.Button{
@@ -301,7 +285,8 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				},
 			})
 
-			for chunk := range slices.Chunk(components, 30) {
+			const maxComponentsPerPage = 10 // max 40 total allowed per message
+			for chunk := range slices.Chunk(components, maxComponentsPerPage) {
 				_, err = b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
 					Flags:      discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
 					Components: chunk,
@@ -310,6 +295,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					return err
 				}
 			}
+
 			return nil
 		}
 		return fmt.Errorf("unhandled application command: %s", name)
@@ -319,7 +305,15 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		customID := data.CustomID
 
 		if customID == idRepoAdd1 {
-			err := b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
+			n, err := b.st.CountReposForUser(userID)
+			if err != nil {
+				return err
+			}
+			if n >= maxReposPerUser {
+				return respondWithMessage("You have reached the upper limit of repos")
+			}
+
+			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseModal,
 				Data: &discordgo.InteractionResponseData{
 					CustomID: idRepoAdd2 + userID,
@@ -353,22 +347,68 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			return err
 
 		} else if sessionID, found := strings.CutPrefix(customID, idIssueCreateIssue1); found {
-			x2, ok := b.sessions.Load(sessionID)
+			x, ok := b.sessions.Load(sessionID)
 			if !ok {
 				return fmt.Errorf("failed to load session")
 			}
-			s := x2.(createIssueData)
+			s := x.(createIssueData)
 			idx, err := strconv.Atoi(data.Values[0])
 			if err != nil {
 				return err
 			}
 			s.repoID = idx
 			b.sessions.Store(sessionID, s)
+			options := []discordgo.SelectMenuOption{
+				{
+					Label: "Bug report",
+					Value: strconv.Itoa(int(bugReport)),
+				},
+				{
+					Label: "Feature request",
+					Value: strconv.Itoa(int(featureRequest)),
+				},
+				{
+					Label: "Other issue (no label)",
+					Value: strconv.Itoa(int(neutralIssue)),
+				},
+			}
+			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseUpdateMessage,
+				Data: &discordgo.InteractionResponseData{
+					Content: "Create issue [2 / 3]",
+					Flags:   discordgo.MessageFlagsEphemeral,
+					Components: []discordgo.MessageComponent{
+						discordgo.ActionsRow{
+							Components: []discordgo.MessageComponent{
+								discordgo.SelectMenu{
+									CustomID:    idIssueCreateIssue2 + sessionID,
+									Options:     options,
+									Placeholder: "Choose issue type",
+								},
+							},
+						},
+					},
+				},
+			})
+			return err
+
+		} else if sessionID, found := strings.CutPrefix(customID, idIssueCreateIssue2); found {
+			x, ok := b.sessions.Load(sessionID)
+			if !ok {
+				return fmt.Errorf("failed to load session")
+			}
+			s := x.(createIssueData)
+			idx, err := strconv.Atoi(data.Values[0])
+			if err != nil {
+				return err
+			}
+			s.issueType = issueType(idx)
+			b.sessions.Store(sessionID, s)
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseModal,
 				Data: &discordgo.InteractionResponseData{
-					CustomID: idIssueCreateIssue2 + sessionID,
-					Title:    fmt.Sprintf("Create %s [2 / 2]", s.issueType.Display()),
+					CustomID: idIssueCreateIssue3 + sessionID,
+					Title:    "Create issue [3 / 3]",
 					Components: []discordgo.MessageComponent{
 						discordgo.ActionsRow{
 							Components: []discordgo.MessageComponent{
@@ -377,6 +417,15 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 									Label:    "Title",
 									Style:    discordgo.TextInputShort,
 									Required: true,
+								},
+							},
+						},
+						discordgo.ActionsRow{
+							Components: []discordgo.MessageComponent{
+								discordgo.TextInput{
+									CustomID: "description",
+									Label:    "Description",
+									Style:    discordgo.TextInputParagraph,
 								},
 							},
 						},
@@ -390,17 +439,21 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 			if err != nil {
 				return err
 			}
+			r, err := b.st.GetRepo(repoID)
+			if err != nil {
+				return err
+			}
 			err = b.st.DeleteRepo(repoID)
 			if err != nil {
 				return err
 			}
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseUpdateMessage,
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Flags: discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
 					Components: []discordgo.MessageComponent{
 						discordgo.TextDisplay{
-							Content: ":white_check_mark: Repo deleted",
+							Content: fmt.Sprintf(":white_check_mark: Repo removed: %s", r.Name()),
 						},
 					},
 				},
@@ -429,12 +482,12 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				default:
 					m = "Internal error"
 				}
-				s = fmt.Sprintf(":x: %s: Test failed: %s", r.Name(), m)
+				s = fmt.Sprintf(":x: Test failed: %s\nERROR: %s", r.Name(), m)
 			} else {
-				s = fmt.Sprintf(":white_check_mark: %s: Test succeeded", r.Name())
+				s = fmt.Sprintf(":white_check_mark: Test succeeded: %s", r.Name())
 			}
 			err = b.ds.InteractionRespond(ic.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseUpdateMessage,
+				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
 					Flags: discordgo.MessageFlagsEphemeral | discordgo.MessageFlagsIsComponentsV2,
 					Components: []discordgo.MessageComponent{
@@ -452,19 +505,31 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 		data := ic.ModalSubmitData()
 		customID := data.CustomID
 
-		if sessionID, found := strings.CutPrefix(customID, idIssueCreateIssue2); found {
+		if sessionID, found := strings.CutPrefix(customID, idIssueCreateIssue3); found {
 			x, ok := b.sessions.Load(sessionID)
 			if !ok {
 				return fmt.Errorf("failed to load session")
 			}
+			title := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+			description := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+
 			s := x.(createIssueData)
-			messageURL := fmt.Sprintf("https://discord.com/channels/%s/%s/%s", s.guildID, s.channelID, s.messageID)
+			var source string
+			if s.guildID != "" {
+				messageURL := fmt.Sprintf("https://discord.com/channels/%s/%s/%s", s.guildID, s.channelID, s.messageID)
+				source = fmt.Sprintf("[Discord](%s)", messageURL)
+			} else {
+				source = "Discord"
+			}
 			body := fmt.Sprintf(
-				"> %s\n\n*Originally posted by **%s** on [Discord](%s)*",
+				"> %s\n\n*Originally posted by **%s** on %s*",
 				s.messageContent,
 				s.authorName,
-				messageURL,
+				source,
 			)
+			if description != "" {
+				body += "\n\n" + description
+			}
 			r, err := b.st.GetRepo(s.repoID)
 			if err != nil {
 				return err
@@ -477,7 +542,6 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				labels = append(labels, "enhancement")
 			}
 
-			title := data.Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
 			htmlURL, err := b.api.createIssue(r, createIssueParams{
 				body:   body,
 				labels: labels,
@@ -523,13 +587,14 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 				return nil
 			}
 			token := data.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
-			status, err := b.api.checkToken(&Repo{
+			rTemp := &Repo{
 				Owner:  owner,
 				Repo:   repo,
 				Token:  token,
 				UserID: userID,
 				Vendor: vendor,
-			})
+			}
+			status, err := b.api.checkToken(rTemp)
 			if err != nil {
 				slog.Warn("Failed to verify repo", "error", err)
 				var m string
@@ -542,7 +607,7 @@ func (b *Bot) handleInteraction(ic *discordgo.InteractionCreate) error {
 					m = "Internal error"
 				}
 				_, err2 := b.ds.FollowupMessageCreate(ic.Interaction, false, &discordgo.WebhookParams{
-					Content: ":x: Failed to add repo: " + m,
+					Content: fmt.Sprintf(":x: Failed to add repo: %s\n%s", rTemp.Name(), m),
 				})
 				if err2 != nil {
 					return err2

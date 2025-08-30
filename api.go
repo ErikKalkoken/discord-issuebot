@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 const (
@@ -143,6 +144,9 @@ func (s repoAPI) gitLabCreateIssue(r *Repo, arg createIssueParams) (string, erro
 		"title":         {arg.title},
 		"description":   {arg.body},
 	}
+	if len(arg.labels) > 0 {
+		v.Set("labels", strings.Join(arg.labels, ","))
+	}
 	res, err := http.Post(u+"?"+v.Encode(), "application/json", nil)
 	if err != nil {
 		return "", wrapErr(err)
@@ -175,10 +179,14 @@ func (s repoAPI) gitHubCreateIssue(r *Repo, arg createIssueParams) (string, erro
 	if err != nil {
 		return "", wrapErr(err)
 	}
-	body, err := json.Marshal(map[string]any{
+	params := map[string]any{
 		"title": arg.title,
 		"body":  arg.body,
-	})
+	}
+	if len(arg.labels) > 0 {
+		params["labels"] = arg.labels
+	}
+	body, err := json.Marshal(params)
 	if err != nil {
 		return "", wrapErr(err)
 	}
